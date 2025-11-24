@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wrestling Stance Analyzer</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        text-align: center;
+        margin: 30px;
+        background: #f9f9f9;
+      }
+
+      h1 {
+        color: #333;
+        margin-bottom: 20px;
+      }
+
+      #webcam-container {
+        display: inline-block;
+        margin: 20px 0;
+        position: relative;
+      }
+
+      #canvas {
+        border: 2px solid #ddd;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        max-width: 100%;
+      }
+
+      #label-container {
+        margin-top: 20px;
+        padding: 20px;
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        display: inline-block;
+        min-width: 300px;
+      }
+
+      #label-container div {
+        margin: 10px 0;
+        font-size: 18px;
+        font-weight: 500;
+        padding: 8px;
+        border-radius: 5px;
+        transition: all 0.3s ease;
+      }
+
+      #label-container div.high-confidence {
+        background-color: #d4edda;
+        color: #155724;
+      }
+
+      button {
+        padding: 12px 24px;
+        border-radius: 8px;
+        background: #007bff;
+        color: #fff;
+        border: none;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 500;
+        transition: background-color 0.3s ease;
+        margin: 5px;
+      }
+
+      button:hover {
+        background: #0056b3;
+      }
+
+      button:disabled {
+        background: #cccccc;
+        cursor: not-allowed;
+      }
+
+      .status,
+      .verdict {
+        margin: 12px auto;
+        padding: 12px 18px;
+        font-size: 18px;
+        font-weight: 600;
+        border-radius: 10px;
+        display: inline-block;
+        min-width: 200px;
+      }
+
+      .status {
+        font-size: 16px;
+      }
+
+      .verdict {
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      .loading {
+        background: #fff3cd;
+        color: #856404;
+      }
+
+      .error {
+        background: #f8d7da;
+        color: #721c24;
+      }
+
+      .success {
+        background: #d4edda;
+        color: #155724;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      .test-controls {
+        margin: 20px 0;
+        padding: 15px;
+        background: #e3f2fd;
+        border-radius: 8px;
+      }
+
+      .test-controls button {
+        background: #6c757d;
+        font-size: 14px;
+        padding: 8px 16px;
+      }
+
+      .test-controls button:hover {
+        background: #5a6268;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Wrestling Stance Analyzer</h1>
+
+    <div>
+      <button type="button" id="startBtn" onclick="startWebcam()">
+        Start Camera
+      </button>
+      <button type="button" id="stopBtn" onclick="stopWebcam()" class="hidden">
+        Stop Camera
+      </button>
+    </div>
+
+    <div class="test-controls">
+      <button type="button" id="testToggle" onclick="toggleTestMode()">
+        Test Mode: OFF
+      </button>
+      <button type="button" onclick="downloadLog()">Download Log</button>
+    </div>
+
+    <div id="status" class="status hidden"></div>
+    <div id="verdict" class="verdict hidden"></div>
+
+    <br />
+
+    <div id="webcam-container"></div>
+    <canvas id="canvas" class="hidden"></canvas>
+    <br />
+    <div id="label-container" class="hidden"></div>
+
+    <script>
+      const URL = "./";
+      let model, webcam, ctx, labelContainer, maxPredictions;
+      let isRunning = false;
+      let animationId = null;
+
+      // ---- verdict + smoothing helpers ----
+      const SMOOTH_N = 10; // frames to smooth
+      const CONF_THRESH = 0.6; // decision threshold
+      const probHistory = []; // stores GoodStance probabilities
+
+      function setVerdict(text, color, bg) {
+        const v = document.getElementById("verdict");
+        v.textContent = text;
+        v.style.color = color;
+        v.style.background = bg;
+        v.classList.remove("hidden");
+      }
+
+      // ---- test-mode logging ----
+      let testMode = false;
+      let logBuf = "timestamp,goodProb,badProb,verdict\n";
+      let logInterval = null;
+
+      function toggleTestMode() {
+        testMode = !testMode;
+        const btn = document.getElementById("testToggle");
+        btn.textContent = `Test Mode: ${testMode ? "ON" : "OFF"}`;
+        btn.style.background = testMode ? "#28a745" : "#6c757d";
+
+        if (testMode && !logInterval) {
+          logInterval = setInterval(() => {
+            if (!isRunning || probHistory.length === 0) return;
+            const lastGood = probHistory[probHistory.length - 1];
+            const good = lastGood.toFixed(4);
+            const bad = (1 - lastGood).toFixed(4);
+            const verdict =
+              document.getElementById("verdict")?.textContent || "";
+            logBuf += `${Date.now()},${good},${bad},"${verdict}"\n`;
+          }, 1000);
+        } else if (!testMode && logInterval) {
+          clearInterval(logInterval);
+          logInterval = null;
+        }
+      }
+
+      function downloadLog() {
+        const blob = new Blob([logBuf], { type: "text/csv" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `wrestling_stance_log_${Date.now()}.csv`;
+        a.click();
+      }
+
+      // Initialize on page load (just the model)
+      window.addEventListener("DOMContentLoaded", async () => {
+        await loadModel();
+      });
+
+      async function loadModel() {
+        showStatus("Loading pose model...", "loading");
+        try {
+          const modelURL = URL + "model.json";
+          const metadataURL = URL + "metadata.json";
+          model = await tmPose.load(modelURL, metadataURL);
+          maxPredictions = model.getTotalClasses();
+
+          setupUI();
+          showStatus('Model loaded! Click "Start Camera" to begin.', "success");
+          setTimeout(() => hideStatus(), 3000);
+        } catch (error) {
+          showStatus(`Failed to load model: ${error.message}`, "error");
+          console.error("Model loading error:", error);
+        }
+      }
+
+      function setupUI() {
+        const canvas = document.getElementById("canvas");
+        canvas.width = 400;
+        canvas.height = 400;
+        ctx = canvas.getContext("2d");
+
+        labelContainer = document.getElementById("label-container");
+        labelContainer.innerHTML = "";
+        for (let i = 0; i < maxPredictions; i++) {
+          labelContainer.appendChild(document.createElement("div"));
+        }
+      }
+
+      async function startWebcam() {
+        if (!model) {
+          showStatus("Model not loaded yet. Please wait...", "error");
+          return;
+        }
+
+        const startBtn = document.getElementById("startBtn");
+        const stopBtn = document.getElementById("stopBtn");
+
+        startBtn.disabled = true;
+        showStatus("Requesting camera access...", "loading");
+
+        try {
+          // Create webcam with explicit media constraints
+          const size = 400;
+          const flip = true;
+
+          // Create a new webcam instance
+          webcam = new tmPose.Webcam(size, size, flip);
+
+          // Use more explicit constraints for Brave
+          const constraints = {
+            video: {
+              width: { ideal: size },
+              height: { ideal: size },
+              facingMode: "user",
+            },
+            audio: false,
+          };
+
+          // Setup with constraints
+          await webcam.setup(constraints);
+
+          // Append to container BEFORE play
+          const container = document.getElementById("webcam-container");
+          container.innerHTML = "";
+          container.appendChild(webcam.canvas);
+
+          // Small delay for Brave to register the element
+          await new Promise((resolve) => setTimeout(resolve, 100));
+
+          // Now try to play
+          await webcam.play();
+
+          // If we got here, it worked!
+          isRunning = true;
+          showStatus("Camera started successfully!", "success");
+          setTimeout(() => hideStatus(), 2000);
+
+          // Show UI elements
+          document.getElementById("canvas").classList.remove("hidden");
+          document.getElementById("label-container").classList.remove("hidden");
+          startBtn.classList.add("hidden");
+          stopBtn.classList.remove("hidden");
+
+          // Clear history when starting fresh
+          probHistory.length = 0;
+
+          // Start prediction loop
+          requestAnimationFrame(loop);
+        } catch (error) {
+          console.error("Webcam error:", error);
+          showStatus(
+            `Camera error: ${error.message}. Check camera permissions in Brave settings.`,
+            "error"
+          );
+          startBtn.disabled = false;
+
+          // Cleanup on error
+          if (webcam) {
+            try {
+              webcam.stop();
+            } catch (e) {}
+            webcam = null;
+          }
+        }
+      }
+
+      function stopWebcam() {
+        isRunning = false;
+
+        if (animationId) {
+          cancelAnimationFrame(animationId);
+          animationId = null;
+        }
+
+        if (webcam) {
+          webcam.stop();
+          webcam = null;
+        }
+
+        // Hide verdict when stopping
+        document.getElementById("verdict").classList.add("hidden");
+
+        // Reset UI
+        document.getElementById("webcam-container").innerHTML = "";
+        document.getElementById("canvas").classList.add("hidden");
+        document.getElementById("label-container").classList.add("hidden");
+        document.getElementById("startBtn").classList.remove("hidden");
+        document.getElementById("stopBtn").classList.add("hidden");
+        document.getElementById("startBtn").disabled = false;
+
+        showStatus("Camera stopped.", "success");
+        setTimeout(() => hideStatus(), 2000);
+      }
+
+      async function loop(timestamp) {
+        if (isRunning && webcam) {
+          webcam.update();
+          await predict();
+          animationId = requestAnimationFrame(loop);
+        }
+      }
+
+      async function predict() {
+        if (!webcam || !webcam.canvas || !model) return;
+
+        try {
+          const { pose, posenetOutput } = await model.estimatePose(
+            webcam.canvas
+          );
+          const prediction = await model.predict(posenetOutput);
+
+          // Map class names -> good/bad probs (adjust regex if your class names differ)
+          const goodIdx = prediction.findIndex((p) =>
+            /good/i.test(p.className)
+          );
+          const badIdx = prediction.findIndex((p) =>
+            /need|bad/i.test(p.className)
+          );
+
+          const goodProb = goodIdx >= 0 ? prediction[goodIdx].probability : 0;
+          const badProb = badIdx >= 0 ? prediction[badIdx].probability : 0;
+
+          // Smooth good-probability
+          probHistory.push(goodProb);
+          if (probHistory.length > SMOOTH_N) probHistory.shift();
+
+          const smoothGood =
+            probHistory.length > 0
+              ? probHistory.reduce((a, b) => a + b, 0) / probHistory.length
+              : 0;
+
+          // Verdict with a small margin (hysteresis) to reduce flicker
+          const margin = smoothGood - (1 - smoothGood);
+          if (smoothGood >= CONF_THRESH && margin > 0.15) {
+            setVerdict("✓ Good stance", "#155724", "#d4edda");
+          } else if (smoothGood <= 1 - CONF_THRESH && margin < -0.15) {
+            setVerdict("⚠ Needs adjustment", "#856404", "#fff3cd");
+          } else {
+            setVerdict("… Hold steady", "#0c5460", "#d1ecf1");
+          }
+
+          // Update class labels
+          for (let i = 0; i < maxPredictions; i++) {
+            const p = prediction[i];
+            const percentage = (p.probability * 100).toFixed(1);
+            const div = labelContainer.childNodes[i];
+            div.innerHTML = `${p.className}: ${percentage}%`;
+
+            if (p.probability > 0.7) {
+              div.classList.add("high-confidence");
+            } else {
+              div.classList.remove("high-confidence");
+            }
+          }
+
+          drawPose(pose);
+        } catch (error) {
+          console.error("Prediction error:", error);
+        }
+      }
+
+      function drawPose(pose) {
+        if (!webcam || !webcam.canvas || !ctx) return;
+
+        ctx.drawImage(webcam.canvas, 0, 0);
+        if (pose) {
+          const minPartConfidence = 0.5;
+          tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
+          tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
+        }
+      }
+
+      function showStatus(message, type) {
+        const status = document.getElementById("status");
+        status.textContent = message;
+        status.className = `status ${type}`;
+        status.classList.remove("hidden");
+      }
+
+      function hideStatus() {
+        document.getElementById("status").classList.add("hidden");
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Teachable Machine Pose Model</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 20px;
+        background-color: #f0f0f0;
+      }
+
+      h1 {
+        color: #333;
+        margin-bottom: 20px;
+      }
+
+      button {
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 16px;
+        margin: 10px;
+        cursor: pointer;
+        border-radius: 5px;
+        transition: background-color 0.3s;
+      }
+
+      button:hover {
+        background-color: #45a049;
+      }
+
+      button:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+      }
+
+      #canvas {
+        border: 2px solid #333;
+        border-radius: 10px;
+        margin: 20px 0;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      #label-container {
+        background-color: white;
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        min-width: 300px;
+      }
+
+      #label-container div {
+        margin: 10px 0;
+        padding: 10px;
+        background-color: #f8f8f8;
+        border-radius: 5px;
+        font-weight: bold;
+        transition: background-color 0.3s;
+      }
+
+      #label-container div:hover {
+        background-color: #e8e8e8;
+      }
+
+      .error-message {
+        color: red;
+        margin-top: 10px;
+        padding: 10px;
+        background-color: #ffe6e6;
+        border-radius: 5px;
+        display: none;
+      }
+
+      .loading-indicator {
+        display: none;
+        margin: 20px 0;
+      }
+
+      .loading-indicator.active {
+        display: block;
+      }
+
+      .loading-indicator .spinner {
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #4caf50;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Wrestling Stance Pose Model</h1> 
+
+    <button type="button" id="startBtn" onclick="init()">Start Camera</button>
+    <button type="button" id="stopBtn" onclick="stop()" style="display: none">
+      Stop Camera
+    </button>
+
+    <div class="error-message" id="errorMessage"></div>
+
+    <div class="loading-indicator" id="loadingIndicator">
+      <div class="spinner"></div>
+      <p>Loading model and setting up camera...</p>
+    </div>
+
+    <div><canvas id="canvas" style="display: none"></canvas></div>
+    <div id="label-container" style="display: none"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/pose@0.8/dist/teachablemachine-pose.min.js"></script>
+    <script type="text/javascript">
+      // More API functions here:
+      // https://github.com/googlecreativelab/teachablemachine-community/tree/master/libraries/pose
+
+      // the link to your model provided by Teachable Machine export panel
+      const URL = "./";
+      let model, webcam, ctx, labelContainer, maxPredictions;
+      let isRunning = false;
+      let animationId = null;
+
+      async function init() {
+        const startBtn = document.getElementById("startBtn");
+        const stopBtn = document.getElementById("stopBtn");
+        const errorMessage = document.getElementById("errorMessage");
+        const loadingIndicator = document.getElementById("loadingIndicator");
+        const canvas = document.getElementById("canvas");
+        const labelContainerEl = document.getElementById("label-container");
+
+        try {
+          // Reset any previous state
+          if (webcam) {
+            webcam.stop();
+            webcam = null;
+          }
+          if (animationId) {
+            cancelAnimationFrame(animationId);
+            animationId = null;
+          }
+
+          startBtn.disabled = true;
+          errorMessage.style.display = "none";
+          loadingIndicator.classList.add("active");
+
+          const modelURL = URL + "model.json";
+          const metadataURL = URL + "metadata.json";
+
+          // Load the model
+          console.log("Loading model...");
+          model = await tmPose.load(modelURL, metadataURL);
+          maxPredictions = model.getTotalClasses();
+          console.log("Model loaded successfully");
+
+          // Setup webcam
+          const size = 300;
+          const flip = true;
+          webcam = new tmPose.Webcam(size, size, flip);
+
+          console.log("Setting up webcam...");
+          await webcam.setup();
+          console.log("Webcam setup complete");
+
+          // Setup canvas
+          canvas.width = size;
+          canvas.height = size;
+          ctx = canvas.getContext("2d");
+
+          // Setup label container
+          labelContainer = labelContainerEl;
+          labelContainer.innerHTML = "";
+
+          for (let i = 0; i < maxPredictions; i++) {
+            labelContainer.appendChild(document.createElement("div"));
+          }
+
+          // Start playing webcam with proper error handling
+          console.log("Starting webcam playback...");
+          try {
+            await webcam.play();
+          } catch (playError) {
+            // If play fails, try again after a short delay
+            console.log("Initial play failed, retrying...");
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            await webcam.play();
+          }
+
+          isRunning = true;
+
+          // Show UI elements
+          canvas.style.display = "block";
+          labelContainer.style.display = "block";
+          loadingIndicator.classList.remove("active");
+
+          // Update buttons
+          startBtn.style.display = "none";
+          stopBtn.style.display = "inline-block";
+
+          // Start the prediction loop
+          loop();
+
+          console.log("Initialization complete");
+        } catch (error) {
+          console.error("Error initializing:", error);
+
+          let errorMsg = `Error: ${error.message}`;
+          if (error.message.includes("Failed to fetch")) {
+            errorMsg =
+              "Error: Model files not found. Make sure model.json, metadata.json, and weights.bin are in the same directory as this HTML file.";
+          } else if (
+            error.message.includes("Permission denied") ||
+            error.message.includes("NotAllowedError")
+          ) {
+            errorMsg =
+              "Error: Camera access denied. Please allow camera access and try again.";
+          } else if (error.message.includes("NotFoundError")) {
+            errorMsg =
+              "Error: No camera found. Please make sure you have a webcam connected.";
+          }
+
+          errorMessage.textContent = errorMsg;
+          errorMessage.style.display = "block";
+          startBtn.disabled = false;
+          startBtn.style.display = "inline-block";
+          loadingIndicator.classList.remove("active");
+
+          // Clean up on error
+          if (webcam) {
+            try {
+              webcam.stop();
+            } catch (e) {}
+            webcam = null;
+          }
+        }
+      }
+
+      function loop() {
+        if (isRunning && webcam && webcam.canvas) {
+          webcam.update();
+          predict().then(() => {
+            animationId = requestAnimationFrame(loop);
+          });
+        }
+      }
+
+      async function predict() {
+        if (!webcam || !webcam.canvas || !model) return;
+
+        try {
+          // Prediction #1: run input through posenet
+          const { pose, posenetOutput } = await model.estimatePose(
+            webcam.canvas
+          );
+
+          // Prediction 2: run input through teachable machine classification model
+          const prediction = await model.predict(posenetOutput);
+
+          for (let i = 0; i < maxPredictions; i++) {
+            if (labelContainer.childNodes[i]) {
+              const classPrediction =
+                prediction[i].className +
+                ": " +
+                (prediction[i].probability * 100).toFixed(1) +
+                "%";
+              labelContainer.childNodes[i].innerHTML = classPrediction;
+
+              // Highlight the most probable prediction
+              if (prediction[i].probability > 0.7) {
+                labelContainer.childNodes[i].style.backgroundColor = "#90EE90";
+                labelContainer.childNodes[i].style.color = "#006400";
+              } else {
+                labelContainer.childNodes[i].style.backgroundColor = "#f8f8f8";
+                labelContainer.childNodes[i].style.color = "#333";
+              }
+            }
+          }
+
+          // Draw the pose
+          drawPose(pose);
+        } catch (error) {
+          console.error("Prediction error:", error);
+        }
+      }
+
+      function drawPose(pose) {
+        if (webcam && webcam.canvas && ctx) {
+          ctx.drawImage(webcam.canvas, 0, 0);
+          if (pose) {
+            const minPartConfidence = 0.5;
+            tmPose.drawKeypoints(pose.keypoints, minPartConfidence, ctx);
+            tmPose.drawSkeleton(pose.keypoints, minPartConfidence, ctx);
+          }
+        }
+      }
+
+      function stop() {
+        isRunning = false;
+
+        if (animationId) {
+          cancelAnimationFrame(animationId);
+          animationId = null;
+        }
+
+        if (webcam) {
+          webcam.stop();
+          webcam = null;
+        }
+
+        const startBtn = document.getElementById("startBtn");
+        const stopBtn = document.getElementById("stopBtn");
+        const canvas = document.getElementById("canvas");
+        const labelContainer = document.getElementById("label-container");
+
+        startBtn.style.display = "inline-block";
+        startBtn.disabled = false;
+        stopBtn.style.display = "none";
+
+        // Hide canvas and labels
+        canvas.style.display = "none";
+        labelContainer.style.display = "none";
+
+        // Clear canvas
+        if (ctx) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+      }
+
+      // Clean up on page unload
+      window.addEventListener("beforeunload", () => {
+        if (webcam) {
+          webcam.stop();
+        }
+      });
+    </script>
+  </body>
+</html>
