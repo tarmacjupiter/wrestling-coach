@@ -23,9 +23,15 @@ const CONFIDENCE_THRESHOLD = 0.6; // Minimum confidence to record a pose
 const MAX_HISTORY_DISPLAY = 20; // Maximum history items to display
 
 // Audio configuration
-let audioContext = null;
 let audioEnabled = true; // Toggle for audio on/off
-const poseFrequencies = {}; // Will store frequency for each pose
+const audioCache = {}; // Cache for audio file objects
+const poseAudioMap = {
+  // Map pose class names to audio files
+  "Bad Stance": "sounds/badtstance.mp3",
+  "Good Stance": "sounds/goodstance.mp3",
+  "Too Close": "sounds/tooclose.mp3",
+  "Too Low": "sounds/toolow.mp3",
+};
 
 async function init() {
   const startBtn = document.getElementById("startBtn");
@@ -73,9 +79,8 @@ async function init() {
       }
     }
 
-    // Initialize audio context and assign unique frequencies to each pose
+    // Initialize audio and preload sound files
     initAudio();
-    assignPoseFrequencies();
 
     // Setup webcam
     const size = 300;
@@ -625,74 +630,55 @@ function updateFullscreenButton() {
 }
 
 // Initialize audio context
+// Initialize audio - preload audio files
 function initAudio() {
   try {
-    // Create audio context (Safari requires webkitAudioContext)
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    console.log("Audio initialized");
+    // Preload all audio files
+    Object.keys(poseAudioMap).forEach((poseName) => {
+      const audioPath = poseAudioMap[poseName];
+      const audio = new Audio(audioPath);
+      audio.preload = "auto";
+      audio.volume = 1.0;
+      audioCache[poseName] = audio;
+
+      // Load the audio file
+      audio.load();
+    });
+
+    console.log("Audio files preloaded:", Object.keys(audioCache));
   } catch (error) {
-    console.error("Web Audio API not supported:", error);
+    console.error("Audio initialization error:", error);
     audioEnabled = false;
   }
 }
 
 // Assign unique frequencies to each pose class
-function assignPoseFrequencies() {
-  if (!model) return;
-
-  // Musical notes frequencies for pleasant sounds
-  const frequencies = [
-    262, // C4
-    294, // D4
-    330, // E4
-    349, // F4
-    392, // G4
-    440, // A4
-    494, // B4
-    523, // C5
-  ];
-
-  const classLabels = model.getClassLabels();
-  classLabels.forEach((label, index) => {
-    // Assign frequency, cycling through if more poses than frequencies
-    poseFrequencies[label] = frequencies[index % frequencies.length];
-  });
-
-  console.log("Pose frequencies assigned:", poseFrequencies);
-}
-
 // Play sound for a specific pose
 function playPoseSound(poseName) {
-  if (!audioEnabled || !audioContext || !poseFrequencies[poseName]) {
+  if (!audioEnabled) {
+    return;
+  }
+
+  // Check if we have an audio file for this pose
+  const audio = audioCache[poseName];
+
+  if (!audio) {
+    console.warn("No audio file found for pose:", poseName);
     return;
   }
 
   try {
-    const frequency = poseFrequencies[poseName];
-    const duration = 0.15; // 150ms beep
+    // Reset audio to beginning if it's already playing
+    audio.currentTime = 0;
 
-    // Create oscillator for the tone
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
+    // Play the audio
+    audio.play().catch((error) => {
+      console.error("Error playing audio for", poseName, ":", error);
+    });
 
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-
-    // Configure the sound
-    oscillator.type = "sine"; // Smooth sine wave
-    oscillator.frequency.value = frequency;
-
-    // Envelope for smooth fade in/out
-    const now = audioContext.currentTime;
-    gainNode.gain.setValueAtTime(0, now);
-    gainNode.gain.linearRampToValueAtTime(0.3, now + 0.01); // Fade in
-    gainNode.gain.linearRampToValueAtTime(0, now + duration); // Fade out
-
-    // Play the sound
-    oscillator.start(now);
-    oscillator.stop(now + duration);
+    console.log("Playing audio for:", poseName);
   } catch (error) {
-    console.error("Error playing sound:", error);
+    console.error("Error playing audio:", error);
   }
 }
 
@@ -703,6 +689,20 @@ function toggleAudio() {
   if (audioBtn) {
     audioBtn.textContent = audioEnabled ? "🔊 Audio On" : "🔇 Audio Off";
   }
+
+  // Test audio when enabling by playing the first available sound
+  if (audioEnabled && Object.keys(audioCache).length > 0) {
+    const firstPose = Object.keys(audioCache)[0];
+    const testAudio = audioCache[firstPose];
+    if (testAudio) {
+      testAudio.currentTime = 0;
+      testAudio.play().catch((error) => {
+        console.warn("Audio test failed:", error);
+      });
+      console.log("Audio test: playing", firstPose);
+    }
+  }
+
   console.log("Audio " + (audioEnabled ? "enabled" : "disabled"));
 }
 
