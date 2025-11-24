@@ -22,6 +22,11 @@ let pauseStartTime = null; // When the current pause started
 const CONFIDENCE_THRESHOLD = 0.6; // Minimum confidence to record a pose
 const MAX_HISTORY_DISPLAY = 20; // Maximum history items to display
 
+// Audio configuration
+let audioContext = null;
+let audioEnabled = true; // Toggle for audio on/off
+const poseFrequencies = {}; // Will store frequency for each pose
+
 async function init() {
   const startBtn = document.getElementById("startBtn");
   const stopBtn = document.getElementById("stopBtn");
@@ -67,6 +72,10 @@ async function init() {
         };
       }
     }
+
+    // Initialize audio context and assign unique frequencies to each pose
+    initAudio();
+    assignPoseFrequencies();
 
     // Setup webcam
     const size = 300;
@@ -114,7 +123,7 @@ async function init() {
     startBtn.style.display = "none";
     stopBtn.style.display = "inline-block";
     document.getElementById("pauseBtn").style.display = "inline-block";
-    document.getElementById("fullscreenBtn").style.display = "inline-block";
+    document.getElementById("audioBtn").style.display = "inline-block";
     resetBtn.style.display = "inline-block";
     exportBtn.style.display = "inline-block";
 
@@ -238,6 +247,9 @@ function recordPose(poseName, confidence) {
     currentPose = poseName;
     currentPoseStartTime = now;
     updateCurrentPoseDisplay(poseName, 0);
+
+    // Play sound for the new pose
+    playPoseSound(poseName);
   } else {
     // Update timer for current pose
     const duration = (now - currentPoseStartTime) / 1000;
@@ -462,14 +474,14 @@ function stop() {
   const startBtn = document.getElementById("startBtn");
   const stopBtn = document.getElementById("stopBtn");
   const pauseBtn = document.getElementById("pauseBtn");
-  const fullscreenBtn = document.getElementById("fullscreenBtn");
+  const audioBtn = document.getElementById("audioBtn");
   const mainContent = document.getElementById("mainContent");
 
   startBtn.style.display = "inline-block";
   startBtn.disabled = false;
   stopBtn.style.display = "none";
   pauseBtn.style.display = "none";
-  fullscreenBtn.style.display = "none";
+  audioBtn.style.display = "none";
 
   // Hide main content
   mainContent.style.display = "none";
@@ -570,7 +582,6 @@ function togglePause() {
 
 function toggleFullscreen() {
   const videoSection = document.querySelector(".video-section");
-  const fullscreenBtn = document.getElementById("fullscreenBtn");
 
   if (!document.fullscreenElement) {
     // Enter fullscreen
@@ -597,16 +608,106 @@ function toggleFullscreen() {
   }
 }
 
-// Update fullscreen button text when fullscreen state changes
+// Update fullscreen icon when fullscreen state changes
 function updateFullscreenButton() {
-  const fullscreenBtn = document.getElementById("fullscreenBtn");
-  if (fullscreenBtn && fullscreenBtn.style.display !== "none") {
+  const fullscreenIcon = document.getElementById("fullscreenIcon");
+  if (fullscreenIcon) {
     if (document.fullscreenElement) {
-      fullscreenBtn.textContent = "Exit Fullscreen";
+      // Show "exit fullscreen" icon (compress)
+      fullscreenIcon.setAttribute(
+        "d",
+        "M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"
+      );
     } else {
-      fullscreenBtn.textContent = "Fullscreen";
+      // Show "enter fullscreen" icon (expand)
+      fullscreenIcon.setAttribute(
+        "d",
+        "M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"
+      );
     }
   }
+}
+
+// Initialize audio context
+function initAudio() {
+  try {
+    // Create audio context (Safari requires webkitAudioContext)
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    console.log("Audio initialized");
+  } catch (error) {
+    console.error("Web Audio API not supported:", error);
+    audioEnabled = false;
+  }
+}
+
+// Assign unique frequencies to each pose class
+function assignPoseFrequencies() {
+  if (!model) return;
+
+  // Musical notes frequencies for pleasant sounds
+  const frequencies = [
+    262, // C4
+    294, // D4
+    330, // E4
+    349, // F4
+    392, // G4
+    440, // A4
+    494, // B4
+    523, // C5
+  ];
+
+  const classLabels = model.getClassLabels();
+  classLabels.forEach((label, index) => {
+    // Assign frequency, cycling through if more poses than frequencies
+    poseFrequencies[label] = frequencies[index % frequencies.length];
+  });
+
+  console.log("Pose frequencies assigned:", poseFrequencies);
+}
+
+// Play sound for a specific pose
+function playPoseSound(poseName) {
+  if (!audioEnabled || !audioContext || !poseFrequencies[poseName]) {
+    return;
+  }
+
+  try {
+    const frequency = poseFrequencies[poseName];
+    const duration = 0.15; // 150ms beep
+
+    // Create oscillator for the tone
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    // Configure the sound
+    oscillator.type = "sine"; // Smooth sine wave
+    oscillator.frequency.value = frequency;
+
+    // Envelope for smooth fade in/out
+    const now = audioContext.currentTime;
+    gainNode.gain.setValueAtTime(0, now);
+    gainNode.gain.linearRampToValueAtTime(0.3, now + 0.01); // Fade in
+    gainNode.gain.linearRampToValueAtTime(0, now + duration); // Fade out
+
+    // Play the sound
+    oscillator.start(now);
+    oscillator.stop(now + duration);
+  } catch (error) {
+    console.error("Error playing sound:", error);
+  }
+}
+
+// Toggle audio on/off
+function toggleAudio() {
+  audioEnabled = !audioEnabled;
+  const audioBtn = document.getElementById("audioBtn");
+  if (audioBtn) {
+    audioBtn.textContent = audioEnabled ? "🔊 Audio On" : "🔇 Audio Off";
+  }
+  console.log("Audio " + (audioEnabled ? "enabled" : "disabled"));
 }
 
 function exportData() {
