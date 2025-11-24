@@ -62,6 +62,14 @@ button.danger:hover {
   background-color: #da190b;
 }
 
+button.warning {
+  background-color: #ff9800;
+}
+
+button.warning:hover {
+  background-color: #e68900;
+}
+
 .main-content {
   display: flex;
   gap: 20px;

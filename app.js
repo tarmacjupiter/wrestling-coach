@@ -5,6 +5,7 @@
 const MODEL_URL = "./";
 let model, webcam, ctx, labelContainer, maxPredictions;
 let isRunning = false;
+let isPaused = false; // Track if recording is paused
 let animationId = null;
 
 // Statistics tracking variables
@@ -14,6 +15,8 @@ let currentPose = null;
 let currentPoseStartTime = null;
 let sessionStartTime = null;
 let statsUpdateInterval = null;
+let pausedTime = 0; // Total time spent paused
+let pauseStartTime = null; // When the current pause started
 
 // Configuration
 const CONFIDENCE_THRESHOLD = 0.6; // Minimum confidence to record a pose
@@ -98,7 +101,10 @@ async function init() {
     }
 
     isRunning = true;
+    isPaused = false; // Reset pause state
     sessionStartTime = Date.now();
+    pausedTime = 0; // Reset paused time
+    pauseStartTime = null;
 
     // Show UI elements
     mainContent.style.display = "flex";
@@ -107,6 +113,7 @@ async function init() {
     // Update buttons
     startBtn.style.display = "none";
     stopBtn.style.display = "inline-block";
+    document.getElementById("pauseBtn").style.display = "inline-block";
     resetBtn.style.display = "inline-block";
     exportBtn.style.display = "inline-block";
 
@@ -200,12 +207,12 @@ async function predict() {
       }
     }
 
-    // Record pose if confidence is high enough
-    if (maxProb >= CONFIDENCE_THRESHOLD && detectedPose) {
+    // Record pose if confidence is high enough (only if not paused)
+    if (maxProb >= CONFIDENCE_THRESHOLD && detectedPose && !isPaused) {
       recordPose(detectedPose, maxProb);
     } else {
-      // If no confident pose detected, end current pose tracking
-      if (currentPose) {
+      // If no confident pose detected or paused, end current pose tracking
+      if (currentPose && !isPaused) {
         finalizePose();
       }
     }
@@ -288,14 +295,23 @@ function updateStatsDisplay() {
   const statsContainer = document.getElementById("statsContainer");
   const barChart = document.getElementById("barChart");
 
-  // Update session duration
+  // Update session duration (excluding paused time)
   if (sessionStartTime) {
-    const sessionDuration = Math.floor((Date.now() - sessionStartTime) / 1000);
+    const currentPausedTime =
+      isPaused && pauseStartTime ? Date.now() - pauseStartTime : 0;
+    const totalPausedTime = pausedTime + currentPausedTime;
+    const sessionDuration = Math.floor(
+      (Date.now() - sessionStartTime - totalPausedTime) / 1000
+    );
+
+    const pauseIndicator = isPaused
+      ? ' <span style="color: #f44336;">(PAUSED)</span>'
+      : "";
     document.getElementById(
       "sessionInfo"
     ).innerHTML = `Session Duration: <strong>${formatDuration(
       sessionDuration * 1000
-    )}</strong>`;
+    )}</strong>${pauseIndicator}`;
   }
 
   // Check if we have any stats
@@ -420,11 +436,12 @@ function drawPose(pose) {
 
 function stop() {
   // Finalize current pose before stopping
-  if (currentPose) {
+  if (currentPose && !isPaused) {
     finalizePose();
   }
 
   isRunning = false;
+  isPaused = false;
 
   if (animationId) {
     cancelAnimationFrame(animationId);
@@ -443,11 +460,13 @@ function stop() {
 
   const startBtn = document.getElementById("startBtn");
   const stopBtn = document.getElementById("stopBtn");
+  const pauseBtn = document.getElementById("pauseBtn");
   const mainContent = document.getElementById("mainContent");
 
   startBtn.style.display = "inline-block";
   startBtn.disabled = false;
   stopBtn.style.display = "none";
+  pauseBtn.style.display = "none";
 
   // Hide main content
   mainContent.style.display = "none";
@@ -473,7 +492,7 @@ function resetStats() {
   }
 
   // Finalize current pose
-  if (currentPose) {
+  if (currentPose && !isPaused) {
     finalizePose();
   }
 
@@ -494,12 +513,56 @@ function resetStats() {
   }
 
   sessionStartTime = Date.now();
+  pausedTime = 0;
+  pauseStartTime = null;
 
   // Update displays
   updateStatsDisplay();
   updateHistoryDisplay();
 
   console.log("Statistics reset");
+}
+
+function togglePause() {
+  const pauseBtn = document.getElementById("pauseBtn");
+
+  if (!isPaused) {
+    // Pause recording
+    isPaused = true;
+    pauseStartTime = Date.now();
+
+    // Finalize current pose before pausing
+    if (currentPose) {
+      finalizePose();
+    }
+
+    pauseBtn.textContent = "Resume Recording";
+    pauseBtn.classList.remove("secondary");
+    pauseBtn.classList.add("warning");
+
+    // Update current pose display
+    document.querySelector(".current-pose-name").textContent = "PAUSED";
+
+    console.log("Recording paused");
+  } else {
+    // Resume recording
+    isPaused = false;
+
+    // Add paused duration to total
+    if (pauseStartTime) {
+      pausedTime += Date.now() - pauseStartTime;
+      pauseStartTime = null;
+    }
+
+    pauseBtn.textContent = "Pause Recording";
+    pauseBtn.classList.remove("warning");
+    pauseBtn.classList.add("secondary");
+
+    // Update current pose display
+    document.querySelector(".current-pose-name").textContent = "Waiting...";
+
+    console.log("Recording resumed");
+  }
 }
 
 function exportData() {
