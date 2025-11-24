@@ -85,6 +85,104 @@ button.warning:hover {
   align-items: center;
 }
 
+.canvas-container {
+  position: relative;
+  display: inline-block;
+}
+
+.canvas-container:hover .fullscreen-overlay-btn {
+  opacity: 1;
+}
+
+.fullscreen-overlay-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background-color: rgba(0, 0, 0, 0.6);
+  color: white;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s, background-color 0.3s;
+  z-index: 10;
+}
+
+.fullscreen-overlay-btn:hover {
+  background-color: rgba(0, 0, 0, 0.8);
+  opacity: 1 !important;
+}
+
+.fullscreen-overlay-btn svg {
+  display: block;
+}
+
+.video-section:fullscreen {
+  background-color: #1a1a1a;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.video-section:-webkit-full-screen {
+  background-color: #1a1a1a;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.video-section:-moz-full-screen {
+  background-color: #1a1a1a;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.video-section:-ms-fullscreen {
+  background-color: #1a1a1a;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.video-section:fullscreen #canvas {
+  max-width: 90vw;
+  max-height: 90vh;
+  width: auto;
+  height: auto;
+}
+
+.video-section:-webkit-full-screen #canvas {
+  max-width: 90vw;
+  max-height: 90vh;
+  width: auto;
+  height: auto;
+}
+
+.video-section:fullscreen .predictions-panel {
+  max-width: 400px;
+}
+
+.video-section:-webkit-full-screen .predictions-panel {
+  max-width: 400px;
+}
+
+.video-section:fullscreen .fullscreen-overlay-btn {
+  opacity: 0.7;
+}
+
+.video-section:-webkit-full-screen .fullscreen-overlay-btn {
+  opacity: 0.7;
+}
+
 #canvas {
   border: 2px solid #333;
   border-radius: 10px;

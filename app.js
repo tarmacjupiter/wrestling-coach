@@ -114,6 +114,7 @@ async function init() {
     startBtn.style.display = "none";
     stopBtn.style.display = "inline-block";
     document.getElementById("pauseBtn").style.display = "inline-block";
+    document.getElementById("fullscreenBtn").style.display = "inline-block";
     resetBtn.style.display = "inline-block";
     exportBtn.style.display = "inline-block";
 
@@ -461,12 +462,14 @@ function stop() {
   const startBtn = document.getElementById("startBtn");
   const stopBtn = document.getElementById("stopBtn");
   const pauseBtn = document.getElementById("pauseBtn");
+  const fullscreenBtn = document.getElementById("fullscreenBtn");
   const mainContent = document.getElementById("mainContent");
 
   startBtn.style.display = "inline-block";
   startBtn.disabled = false;
   stopBtn.style.display = "none";
   pauseBtn.style.display = "none";
+  fullscreenBtn.style.display = "none";
 
   // Hide main content
   mainContent.style.display = "none";
@@ -565,6 +568,47 @@ function togglePause() {
   }
 }
 
+function toggleFullscreen() {
+  const videoSection = document.querySelector(".video-section");
+  const fullscreenBtn = document.getElementById("fullscreenBtn");
+
+  if (!document.fullscreenElement) {
+    // Enter fullscreen
+    if (videoSection.requestFullscreen) {
+      videoSection.requestFullscreen();
+    } else if (videoSection.webkitRequestFullscreen) {
+      // Safari
+      videoSection.webkitRequestFullscreen();
+    } else if (videoSection.msRequestFullscreen) {
+      // IE11
+      videoSection.msRequestFullscreen();
+    }
+  } else {
+    // Exit fullscreen
+    if (document.exitFullscreen) {
+      document.exitFullscreen();
+    } else if (document.webkitExitFullscreen) {
+      // Safari
+      document.webkitExitFullscreen();
+    } else if (document.msExitFullscreen) {
+      // IE11
+      document.msExitFullscreen();
+    }
+  }
+}
+
+// Update fullscreen button text when fullscreen state changes
+function updateFullscreenButton() {
+  const fullscreenBtn = document.getElementById("fullscreenBtn");
+  if (fullscreenBtn && fullscreenBtn.style.display !== "none") {
+    if (document.fullscreenElement) {
+      fullscreenBtn.textContent = "Exit Fullscreen";
+    } else {
+      fullscreenBtn.textContent = "Fullscreen";
+    }
+  }
+}
+
 function exportData() {
   const exportData = {
     sessionStart: sessionStartTime
@@ -609,3 +653,9 @@ window.addEventListener("beforeunload", () => {
     clearInterval(statsUpdateInterval);
   }
 });
+
+// Listen for fullscreen changes
+document.addEventListener("fullscreenchange", updateFullscreenButton);
+document.addEventListener("webkitfullscreenchange", updateFullscreenButton);
+document.addEventListener("mozfullscreenchange", updateFullscreenButton);
+document.addEventListener("MSFullscreenChange", updateFullscreenButton);
