@@ -122,10 +122,8 @@ async function init() {
     // Update buttons
     startBtn.style.display = "none";
     stopBtn.style.display = "inline-block";
-    document.getElementById("pauseBtn").style.display = "inline-block";
-    document.getElementById("audioBtn").style.display = "inline-block";
-    resetBtn.style.display = "inline-block";
-    exportBtn.style.display = "inline-block";
+    document.getElementById("recordingControls").style.display = "flex";
+    document.getElementById("dataControls").style.display = "flex";
 
     // Start the prediction loop
     loop();
@@ -473,15 +471,13 @@ function stop() {
 
   const startBtn = document.getElementById("startBtn");
   const stopBtn = document.getElementById("stopBtn");
-  const pauseBtn = document.getElementById("pauseBtn");
-  const audioBtn = document.getElementById("audioBtn");
   const mainContent = document.getElementById("mainContent");
 
   startBtn.style.display = "inline-block";
   startBtn.disabled = false;
   stopBtn.style.display = "none";
-  pauseBtn.style.display = "none";
-  audioBtn.style.display = "none";
+  document.getElementById("recordingControls").style.display = "none";
+  document.getElementById("dataControls").style.display = "none";
 
   // Hide main content
   mainContent.style.display = "none";

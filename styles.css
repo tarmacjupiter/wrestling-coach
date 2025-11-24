@@ -19,8 +19,16 @@ h1 {
 
 .controls {
   display: flex;
+  flex-direction: column;
   gap: 10px;
   margin-bottom: 20px;
+  align-items: center;
+}
+
+.control-row {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
 }
 
 button {

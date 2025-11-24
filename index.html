@@ -3,59 +3,68 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Teachable Machine Pose Model - With Statistics</title>
+    <title>Pose Model</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <h1>Wrestling Stance Pose Model - With Statistics</h1>
+    <h1>Wrestling Stance Pose Model</h1>
 
     <div class="controls">
-      <button type="button" id="startBtn" onclick="init()">Start Camera</button>
-      <button
-        type="button"
-        id="pauseBtn"
-        onclick="togglePause()"
-        style="display: none"
-        class="secondary"
-      >
-        Pause Recording
-      </button>
-      <button
-        type="button"
-        id="audioBtn"
-        onclick="toggleAudio()"
-        style="display: none"
-        class="secondary"
-      >
-        🔊 Audio On
-      </button>
-      <button
-        type="button"
-        id="stopBtn"
-        onclick="stop()"
-        style="display: none"
-        class="danger"
-      >
-        Stop Camera
-      </button>
-      <button
-        type="button"
-        id="resetBtn"
-        onclick="resetStats()"
-        style="display: none"
-        class="secondary"
-      >
-        Reset Statistics
-      </button>
-      <button
-        type="button"
-        id="exportBtn"
-        onclick="exportData()"
-        style="display: none"
-        class="secondary"
-      >
-        Export Data
-      </button>
+      <!-- Row 1: Camera controls -->
+      <div class="control-row">
+        <button type="button" id="startBtn" onclick="init()">
+          Start Camera
+        </button>
+        <button
+          type="button"
+          id="stopBtn"
+          onclick="stop()"
+          style="display: none"
+          class="danger"
+        >
+          Stop Camera
+        </button>
+      </div>
+
+      <!-- Row 2: Recording controls -->
+      <div class="control-row" id="recordingControls" style="display: none">
+        <button
+          type="button"
+          id="pauseBtn"
+          onclick="togglePause()"
+          class="secondary"
+        >
+          Pause Recording
+        </button>
+        <button
+          type="button"
+          id="audioBtn"
+          onclick="toggleAudio()"
+          class="secondary"
+        >
+          🔊 Audio On
+        </button>
+      </div>
+
+      <!-- Row 3: Data controls -->
+      <div class="control-row" id="dataControls" style="display: none">
+        <button
+          type="button"
+          id="resetBtn"
+          onclick="resetStats()"
+          class="secondary"
+        >
+          Reset Statistics
+        </button>
+        <button
+          type="button"
+          id="exportBtn"
+          onclick="exportData()"
+          class="secondary"
+        >
+          Export Data
+        </button>
+      </div>
     </div>
 
     <div class="error-message" id="errorMessage"></div>
