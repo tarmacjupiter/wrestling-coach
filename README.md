@@ -2,6 +2,8 @@
 
 A real-time pose detection application that uses machine learning to analyze and provide feedback on wrestling stances. Built with TensorFlow.js and Teachable Machine.
 
+Play around with it [here!](https://tarmacjupiter.github.io/wrestling-coach/)
+
 ## Setup
 
 ### Prerequisites
