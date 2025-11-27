@@ -1,32 +1,24 @@
-// More API functions here:
-// https://github.com/googlecreativelab/teachablemachine-community/tree/master/libraries/pose
-
-// Model and webcam variables
 const MODEL_URL = "./";
 let model, webcam, ctx, labelContainer, maxPredictions;
 let isRunning = false;
-let isPaused = false; // Track if recording is paused
+let isPaused = false;
 let animationId = null;
 
-// Statistics tracking variables
-let poseHistory = []; // Array of {pose, duration, timestamp, endTime}
-let poseStats = {}; // Object with pose names as keys
+let poseHistory = [];
+let poseStats = {};
 let currentPose = null;
 let currentPoseStartTime = null;
 let sessionStartTime = null;
 let statsUpdateInterval = null;
-let pausedTime = 0; // Total time spent paused
-let pauseStartTime = null; // When the current pause started
+let pausedTime = 0;
+let pauseStartTime = null;
 
-// Configuration
-const CONFIDENCE_THRESHOLD = 0.6; // Minimum confidence to record a pose
-const MAX_HISTORY_DISPLAY = 20; // Maximum history items to display
+const CONFIDENCE_THRESHOLD = 0.6;
+const MAX_HISTORY_DISPLAY = 20;
 
-// Audio configuration
-let audioEnabled = true; // Toggle for audio on/off
-const audioCache = {}; // Cache for audio file objects
+let audioEnabled = true;
+const audioCache = {};
 const poseAudioMap = {
-  // Map pose class names to audio files
   "Bad Stance": "sounds/badtstance.mp3",
   "Good Stance": "sounds/goodstance.mp3",
   "Too Close": "sounds/tooclose.mp3",
@@ -44,7 +36,6 @@ async function init() {
   const canvas = document.getElementById("canvas");
 
   try {
-    // Reset any previous state
     if (webcam) {
       webcam.stop();
       webcam = null;
@@ -61,13 +52,11 @@ async function init() {
     const modelURL = MODEL_URL + "model.json";
     const metadataURL = MODEL_URL + "metadata.json";
 
-    // Load the model
     console.log("Loading model...");
     model = await tmPose.load(modelURL, metadataURL);
     maxPredictions = model.getTotalClasses();
     console.log("Model loaded successfully");
 
-    // Initialize stats for all classes
     for (let i = 0; i < maxPredictions; i++) {
       const className = model.getClassLabels()[i];
       if (!poseStats[className]) {
@@ -79,10 +68,8 @@ async function init() {
       }
     }
 
-    // Initialize audio and preload sound files
     initAudio();
 
-    // Setup webcam
     const size = 300;
     const flip = true;
     webcam = new tmPose.Webcam(size, size, flip);
@@ -91,12 +78,10 @@ async function init() {
     await webcam.setup();
     console.log("Webcam setup complete");
 
-    // Setup canvas
     canvas.width = size;
     canvas.height = size;
     ctx = canvas.getContext("2d");
 
-    // Setup label container
     labelContainer = document.getElementById("label-container");
     labelContainer.innerHTML = "";
 
@@ -104,7 +89,6 @@ async function init() {
       labelContainer.appendChild(document.createElement("div"));
     }
 
-    // Start playing webcam
     console.log("Starting webcam playback...");
     try {
       await webcam.play();
@@ -115,25 +99,21 @@ async function init() {
     }
 
     isRunning = true;
-    isPaused = false; // Reset pause state
+    isPaused = false;
     sessionStartTime = Date.now();
-    pausedTime = 0; // Reset paused time
+    pausedTime = 0;
     pauseStartTime = null;
 
-    // Show UI elements
     mainContent.style.display = "flex";
     loadingIndicator.classList.remove("active");
 
-    // Update buttons
     startBtn.style.display = "none";
     stopBtn.style.display = "inline-block";
     document.getElementById("recordingControls").style.display = "flex";
     document.getElementById("dataControls").style.display = "flex";
 
-    // Start the prediction loop
     loop();
 
-    // Start updating stats display
     statsUpdateInterval = setInterval(updateStatsDisplay, 100);
 
     console.log("Initialization complete");
@@ -161,7 +141,6 @@ async function init() {
     startBtn.style.display = "inline-block";
     loadingIndicator.classList.remove("active");
 
-    // Clean up on error
     if (webcam) {
       try {
         webcam.stop();
@@ -184,13 +163,10 @@ async function predict() {
   if (!webcam || !webcam.canvas || !model) return;
 
   try {
-    // Prediction #1: run input through posenet
     const { pose, posenetOutput } = await model.estimatePose(webcam.canvas);
 
-    // Prediction 2: run input through teachable machine classification model
     const prediction = await model.predict(posenetOutput);
 
-    // Find the pose with highest confidence
     let maxProb = 0;
     let detectedPose = null;
 
@@ -203,7 +179,6 @@ async function predict() {
           "%";
         labelContainer.childNodes[i].innerHTML = classPrediction;
 
-        // Highlight the most probable prediction
         if (prediction[i].probability > 0.7) {
           labelContainer.childNodes[i].style.backgroundColor = "#90EE90";
           labelContainer.childNodes[i].style.color = "#006400";
@@ -213,24 +188,20 @@ async function predict() {
         }
       }
 
-      // Track highest probability
       if (prediction[i].probability > maxProb) {
         maxProb = prediction[i].probability;
         detectedPose = prediction[i].className;
       }
     }
 
-    // Record pose if confidence is high enough (only if not paused)
     if (maxProb >= CONFIDENCE_THRESHOLD && detectedPose && !isPaused) {
       recordPose(detectedPose, maxProb);
     } else {
-      // If no confident pose detected or paused, end current pose tracking
       if (currentPose && !isPaused) {
         finalizePose();
       }
     }
 
-    // Draw the pose
     drawPose(pose);
   } catch (error) {
     console.error("Prediction error:", error);
@@ -240,21 +211,17 @@ async function predict() {
 function recordPose(poseName, confidence) {
   const now = Date.now();
 
-  // If pose changed, save the previous one
   if (currentPose && currentPose !== poseName) {
     finalizePose();
   }
 
-  // Start tracking new pose
   if (currentPose !== poseName) {
     currentPose = poseName;
     currentPoseStartTime = now;
     updateCurrentPoseDisplay(poseName, 0);
 
-    // Play sound for the new pose
     playPoseSound(poseName);
   } else {
-    // Update timer for current pose
     const duration = (now - currentPoseStartTime) / 1000;
     updateCurrentPoseDisplay(poseName, duration);
   }
@@ -266,7 +233,6 @@ function finalizePose() {
   const now = Date.now();
   const duration = now - currentPoseStartTime;
 
-  // Add to history
   poseHistory.push({
     pose: currentPose,
     duration: duration,
@@ -274,14 +240,11 @@ function finalizePose() {
     endTime: now,
   });
 
-  // Update statistics
   updateStats(currentPose, duration);
 
-  // Update displays
   updateHistoryDisplay();
   updateStatsDisplay();
 
-  // Reset current pose
   currentPose = null;
   currentPoseStartTime = null;
 }
@@ -311,7 +274,6 @@ function updateStatsDisplay() {
   const statsContainer = document.getElementById("statsContainer");
   const barChart = document.getElementById("barChart");
 
-  // Update session duration (excluding paused time)
   if (sessionStartTime) {
     const currentPausedTime =
       isPaused && pauseStartTime ? Date.now() - pauseStartTime : 0;
@@ -330,7 +292,6 @@ function updateStatsDisplay() {
     )}</strong>${pauseIndicator}`;
   }
 
-  // Check if we have any stats
   const hasStats = Object.keys(poseStats).some(
     (key) => poseStats[key].count > 0
   );
@@ -342,18 +303,15 @@ function updateStatsDisplay() {
     return;
   }
 
-  // Build stats display
   let statsHTML = "";
   let maxDuration = 0;
 
-  // Find max duration for chart scaling
   Object.keys(poseStats).forEach((poseName) => {
     if (poseStats[poseName].totalDuration > maxDuration) {
       maxDuration = poseStats[poseName].totalDuration;
     }
   });
 
-  // Create stat items
   Object.keys(poseStats)
     .filter((key) => poseStats[key].count > 0)
     .forEach((poseName) => {
@@ -370,7 +328,6 @@ function updateStatsDisplay() {
 
   statsContainer.innerHTML = statsHTML;
 
-  // Build bar chart
   let chartHTML = "";
   Object.keys(poseStats)
     .filter((key) => poseStats[key].count > 0)
@@ -406,7 +363,6 @@ function updateHistoryDisplay() {
     return;
   }
 
-  // Show last N items, most recent first
   const recentHistory = poseHistory.slice(-MAX_HISTORY_DISPLAY).reverse();
 
   let historyHTML = "";
@@ -451,7 +407,6 @@ function drawPose(pose) {
 }
 
 function stop() {
-  // Finalize current pose before stopping
   if (currentPose && !isPaused) {
     finalizePose();
   }
@@ -484,16 +439,13 @@ function stop() {
   document.getElementById("recordingControls").style.display = "none";
   document.getElementById("dataControls").style.display = "none";
 
-  // Hide main content
   mainContent.style.display = "none";
 
-  // Clear canvas
   if (ctx) {
     const canvas = document.getElementById("canvas");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
-  // Reset current pose display
   document.querySelector(".current-pose-name").textContent = "Stopped";
   document.getElementById("poseTimer").textContent = "0.0s";
 }
@@ -507,16 +459,13 @@ function resetStats() {
     return;
   }
 
-  // Finalize current pose
   if (currentPose && !isPaused) {
     finalizePose();
   }
 
-  // Reset all data
   poseHistory = [];
   poseStats = {};
 
-  // Reinitialize stats for all classes
   if (model) {
     for (let i = 0; i < maxPredictions; i++) {
       const className = model.getClassLabels()[i];
@@ -532,7 +481,6 @@ function resetStats() {
   pausedTime = 0;
   pauseStartTime = null;
 
-  // Update displays
   updateStatsDisplay();
   updateHistoryDisplay();
 
@@ -543,11 +491,9 @@ function togglePause() {
   const pauseBtn = document.getElementById("pauseBtn");
 
   if (!isPaused) {
-    // Pause recording
     isPaused = true;
     pauseStartTime = Date.now();
 
-    // Finalize current pose before pausing
     if (currentPose) {
       finalizePose();
     }
@@ -556,15 +502,12 @@ function togglePause() {
     pauseBtn.classList.remove("secondary");
     pauseBtn.classList.add("warning");
 
-    // Update current pose display
     document.querySelector(".current-pose-name").textContent = "PAUSED";
 
     console.log("Recording paused");
   } else {
-    // Resume recording
     isPaused = false;
 
-    // Add paused duration to total
     if (pauseStartTime) {
       pausedTime += Date.now() - pauseStartTime;
       pauseStartTime = null;
@@ -574,7 +517,6 @@ function togglePause() {
     pauseBtn.classList.remove("warning");
     pauseBtn.classList.add("secondary");
 
-    // Update current pose display
     document.querySelector(".current-pose-name").textContent = "Waiting...";
 
     console.log("Recording resumed");
@@ -585,42 +527,33 @@ function toggleFullscreen() {
   const videoSection = document.querySelector(".video-section");
 
   if (!document.fullscreenElement) {
-    // Enter fullscreen
     if (videoSection.requestFullscreen) {
       videoSection.requestFullscreen();
     } else if (videoSection.webkitRequestFullscreen) {
-      // Safari
       videoSection.webkitRequestFullscreen();
     } else if (videoSection.msRequestFullscreen) {
-      // IE11
       videoSection.msRequestFullscreen();
     }
   } else {
-    // Exit fullscreen
     if (document.exitFullscreen) {
       document.exitFullscreen();
     } else if (document.webkitExitFullscreen) {
-      // Safari
       document.webkitExitFullscreen();
     } else if (document.msExitFullscreen) {
-      // IE11
       document.msExitFullscreen();
     }
   }
 }
 
-// Update fullscreen icon when fullscreen state changes
 function updateFullscreenButton() {
   const fullscreenIcon = document.getElementById("fullscreenIcon");
   if (fullscreenIcon) {
     if (document.fullscreenElement) {
-      // Show "exit fullscreen" icon (compress)
       fullscreenIcon.setAttribute(
         "d",
         "M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"
       );
     } else {
-      // Show "enter fullscreen" icon (expand)
       fullscreenIcon.setAttribute(
         "d",
         "M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"
@@ -629,11 +562,8 @@ function updateFullscreenButton() {
   }
 }
 
-// Initialize audio context
-// Initialize audio - preload audio files
 function initAudio() {
   try {
-    // Preload all audio files
     Object.keys(poseAudioMap).forEach((poseName) => {
       const audioPath = poseAudioMap[poseName];
       const audio = new Audio(audioPath);
@@ -641,7 +571,6 @@ function initAudio() {
       audio.volume = 1.0;
       audioCache[poseName] = audio;
 
-      // Load the audio file
       audio.load();
     });
 
@@ -652,14 +581,11 @@ function initAudio() {
   }
 }
 
-// Assign unique frequencies to each pose class
-// Play sound for a specific pose
 function playPoseSound(poseName) {
   if (!audioEnabled) {
     return;
   }
 
-  // Check if we have an audio file for this pose
   const audio = audioCache[poseName];
 
   if (!audio) {
@@ -668,10 +594,8 @@ function playPoseSound(poseName) {
   }
 
   try {
-    // Reset audio to beginning if it's already playing
     audio.currentTime = 0;
 
-    // Play the audio
     audio.play().catch((error) => {
       console.error("Error playing audio for", poseName, ":", error);
     });
@@ -682,7 +606,6 @@ function playPoseSound(poseName) {
   }
 }
 
-// Toggle audio on/off
 function toggleAudio() {
   audioEnabled = !audioEnabled;
   const audioBtn = document.getElementById("audioBtn");
@@ -690,7 +613,6 @@ function toggleAudio() {
     audioBtn.textContent = audioEnabled ? "🔊 Audio On" : "🔇 Audio Off";
   }
 
-  // Test audio when enabling by playing the first available sound
   if (audioEnabled && Object.keys(audioCache).length > 0) {
     const firstPose = Object.keys(audioCache)[0];
     const testAudio = audioCache[firstPose];
@@ -723,7 +645,6 @@ function exportData() {
     totalPoses: poseHistory.length,
   };
 
-  // Create downloadable JSON file
   const dataStr = JSON.stringify(exportData, null, 2);
   const dataBlob = new Blob([dataStr], { type: "application/json" });
   const blobUrl = window.URL.createObjectURL(dataBlob);
@@ -735,13 +656,11 @@ function exportData() {
   downloadLink.click();
   document.body.removeChild(downloadLink);
 
-  // Clean up the blob URL
   window.URL.revokeObjectURL(blobUrl);
 
   console.log("Data exported successfully");
 }
 
-// Clean up on page unload
 window.addEventListener("beforeunload", () => {
   if (webcam) {
     webcam.stop();
@@ -751,7 +670,6 @@ window.addEventListener("beforeunload", () => {
   }
 });
 
-// Listen for fullscreen changes
 document.addEventListener("fullscreenchange", updateFullscreenButton);
 document.addEventListener("webkitfullscreenchange", updateFullscreenButton);
 document.addEventListener("mozfullscreenchange", updateFullscreenButton);
