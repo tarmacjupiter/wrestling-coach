@@ -137,7 +137,7 @@ To create a custom pose detection model:
 ## File Structure
 
 ```
-├── index.html          # Main HTML structure
+├── index.html         # Main HTML structure
 ├── app.js             # Application logic and pose detection
 ├── styles.css         # Styling and layout
 ├── model.json         # Teachable Machine model architecture
@@ -148,7 +148,7 @@ To create a custom pose detection model:
 │   ├── goodstance.mp3
 │   ├── tooclose.mp3
 │   └── toolow.mp3
-└── README.md          # This file
+└── README.md          
 ```
 
 ## Technologies Used
